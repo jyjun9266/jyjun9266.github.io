@@ -1,0 +1,70 @@
+name: Add Sangjin Zoom link
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/add-sangjin-zoom.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add Zoom link to Sangjin detail page
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          url = 'https://us06web.zoom.us/j/81415401011'
+
+          if url in s:
+              print('Zoom link already present; no change needed.')
+          else:
+              m = re.search(r'(<section[^>]+id=["\']detail-find["\'][\s\S]*?</section>)', s)
+              if not m:
+                  raise SystemExit('detail-find section not found')
+
+              block = m.group(1)
+              zoom = '<span>줌링크 <a href="https://us06web.zoom.us/j/81415401011" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-weight:800;text-decoration:underline;">접속하기</a></span>'
+
+              # Prefer inserting immediately after the capacity item in the FIND detail meta row.
+              new_block, n = re.subn(
+                  r'(<span>정원\s*<b>30명</b></span>)',
+                  r'\1\n' + zoom,
+                  block,
+                  count=1
+              )
+              if n == 0:
+                  # Fallback: place before the first closing meta container after the FIND hero.
+                  new_block, n = re.subn(
+                      r'(상허연구관\s*303호[\s\S]{0,500}?)(</div>)',
+                      r'\1' + zoom + r'\2',
+                      block,
+                      count=1
+                  )
+              if n == 0:
+                  raise SystemExit('Could not locate insertion point in detail-find')
+
+              s = s[:m.start(1)] + new_block + s[m.end(1):]
+              p.write_text(s, encoding='utf-8')
+              print('Zoom link inserted.')
+          PY
+
+      - name: Commit updated index
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Add Sangjin Zoom link"
+          git push
